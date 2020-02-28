@@ -1,4 +1,5 @@
 # Java商城秒杀系统设计与实战
+
 Java秒杀项目seckill
 
 **前言：**本系统是学习debug讲师的课程《Java商城秒杀系统设计与实战》视频后手写总结。
@@ -112,8 +113,10 @@ CREATE TABLE if not exists item_kill_success (
 **②pom.xml文件**
 
 点击展开
+
 <details>
 <summary>1.seckill父目录下pox.xml</summary>
+
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -143,10 +146,12 @@ CREATE TABLE if not exists item_kill_success (
     </properties>
 </project>
 ```
+
 </details>
 
 <details>
 <summary>2.api-pox.xml</summary>
+
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -198,10 +203,12 @@ CREATE TABLE if not exists item_kill_success (
     </dependencies>
 </project>
 ```
+
 </details>
 
 <details>
 <summary>3.model-pom.xml</summary>
+
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -248,10 +255,12 @@ CREATE TABLE if not exists item_kill_success (
     </dependencies>
 </project>
 ```
+
 </details>
 
 <details>
 <summary>4.server-pom.xml</summary>
+
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -537,6 +546,7 @@ CREATE TABLE if not exists item_kill_success (
     </build>
 </project>
 ```
+
 </details>
 
 
@@ -1601,4 +1611,289 @@ public class SchedulerService {
 public class SchedulerConfig implements SchedulingConfigurer{
 
     @Override
-    public void configureTa
+    public void configureTasks(ScheduledTaskRegistrar taskRegistrar) {
+        taskRegistrar.setScheduler(Executors.newScheduledThreadPool(10));
+    }
+}
+```
+
+#### 8）Jmeter高并发压力测试
+
+Jmeter相关使用，不清楚可以百度，我这里也简单的写了一份文档
+
+**测试**
+
+用例：1秒内启动1000个线程，总共5个userId，货品库存10个。
+
+预期结果：5个user一人一本，货品库存还剩5
+
+实际结果：秒杀成功订单表有33条记录，库存数量变成了-23
+
+![](docs/img/12高并发测试.png)
+
+#### 9）问题分析
+
+**核心流程**
+
+①判断用户是否抢购过商品
+
+②查询待秒杀商品并判断是否可以被秒杀
+
+③扣减库存
+
+④生成秒杀成功的订单通知用户秒杀成功的消息
+
+**问题1：**①中判断用户是否抢购过商品，因为写订单的逻辑在④中，所以高并发场景下，一个user可以进来多次。
+
+**问题2：**②中查询商品是否可以秒杀，扣减库存逻辑在③中，高并发下很导致很多线程都判断通过，同时扣减库存sql应对库存做大于0判断。
+
+**致命点：**多个线程对”同一段操作共享数据的代码“进行并发操作，从而出现并发安全的问题。
+
+**核心方案：**分布式锁解决共享资源在高并发访问时出现的“并发安全”问题
+
+**协助方案：**对于瞬时流量、并发请求进行限流；
+
+**辅助方案**一：中间件（RabbitMQ、Redis）服务做集群部署，提高高可用和稳定性。
+
+**辅助方案二：**mysql做主备部署，读写分离。
+
+## 四、秒杀逻辑优化
+
+### 1.基于Redis的分布式锁优化
+
+**核心方法：**setnx + expire联合使用
+
+**原因：**redis本身就是一个基于内存的、单线程的key-value存储数据库
+
+**导入依赖**
+
+```xml
+<dependency>
+	<groupId>org.springframework.boot</groupId>
+	<artifactId>spring-boot-starter-redis</artifactId>
+</dependency>
+```
+
+**配置文件**
+
+```properties
+#redis
+spring.redis.host=127.0.0.1
+spring.redis.port=6379
+```
+
+**自定义配置RedisConfig**
+
+```java
+/**
+ * redis的通用配置
+ */
+@Configuration
+public class RedisConfig {
+
+    @Autowired
+    private RedisConnectionFactory redisConnectionFactory;
+
+    @Bean
+    public RedisTemplate<String,Object> redisTemplate(){
+        RedisTemplate<String,Object> redisTemplate=new RedisTemplate<>();
+        redisTemplate.setConnectionFactory(redisConnectionFactory);
+        //TODO:指定Key、Value的序列化策略
+        redisTemplate.setKeySerializer(new StringRedisSerializer());
+        redisTemplate.setValueSerializer(new JdkSerializationRedisSerializer());
+
+        redisTemplate.setHashKeySerializer(new StringRedisSerializer());
+        return redisTemplate;
+    }
+
+    @Bean
+    public StringRedisTemplate stringRedisTemplate(){
+        StringRedisTemplate stringRedisTemplate=new StringRedisTemplate();
+        stringRedisTemplate.setConnectionFactory(redisConnectionFactory);
+        return stringRedisTemplate;
+    }
+}
+```
+
+**优化关键代码：**
+
+```java
+// 借助Redis的原子操作实现分布式锁-对共享操作-资源进行控制
+ValueOperations valueOperations = stringRedisTemplate.opsForValue();
+String key = new StringBuffer().append(killId).append(userId).
+    append("-RedisLock").toString();
+String value= RandomUtil.generateOrderCode();
+Boolean cacheRes=valueOperations.setIfAbsent(key,value); 
+//TOOD:redis部署节点宕机了
+if (cacheRes){
+	stringRedisTemplate.expire(key,30, TimeUnit.SECONDS);
+	// ......后序操作
+}
+```
+
+此处redis宕机了会导致没设置过期时间，其实将redis版本升级到2.1以上`setIfAbsent`方法已支持设置过期时间。
+
+**测试：**1秒启动10000个线程，测试结果正常
+
+### 2.基于Redisson的分布式锁优化
+
+面向redis实现的；提供的功能不仅仅包含了Redis所提供的，还提供了诸如延迟队列、分布式服务等。
+
+**知识点：**
+
+Redisson内部提供了一个监控锁的看门狗，作用是在Redisson实例被关闭前，不断的延长锁的有效期。
+
+**引入依赖**
+
+```xml
+<dependency>
+    <groupId>org.redisson</groupId>
+    <artifactId>redisson</artifactId>
+</dependency>
+```
+
+**配置文件RedissonConfig**
+
+```java
+/**
+ * redisson通用化配置
+ */
+@Configuration
+public class RedissonConfig {
+
+    @Autowired
+    private Environment env;
+
+    @Bean
+    public RedissonClient redissonClient(){
+        Config config=new Config();
+        config.useSingleServer()
+                .setAddress(env.getProperty("redis.config.host"))
+                .setPassword(env.getProperty("spring.redis.password"));
+        RedissonClient client=Redisson.create(config);
+        return client;
+    }
+}
+```
+
+**优化代码**
+
+```java
+public Boolean killItemV4(Integer killId, Integer userId) throws Exception {
+	Boolean result=false;
+
+	final String lockKey=new StringBuilder().append(killId).append(userId).append("-RedissonLock").toString();
+	RLock lock=redissonClient.getLock(lockKey);
+
+	try {
+		Boolean cacheRes=lock.tryLock(30,10,TimeUnit.SECONDS);
+		if (cacheRes){
+			//TODO:核心业务逻辑的处理
+			if (itemKillSuccessMapper.countByKillUserId(killId,userId) <= 0){
+				ItemKill itemKill=itemKillMapper.selectByIdV2(killId);
+				if (itemKill!=null && 1==itemKill.getCanKill() && itemKill.getTotal()>0){
+					int res=itemKillMapper.updateKillItemV2(killId);
+					if (res>0){
+						commonRecordKillSuccessInfo(itemKill,userId);
+
+						result=true;
+					}
+				}
+			}else{
+				throw new Exception("redisson-您已经抢购过该商品了!");
+			}
+		}
+	}finally {
+		lock.unlock();
+		//lock.forceUnlock();
+	}
+	return result;
+}
+```
+
+**测试:**1秒启动10000个线程，测试结果正常
+
+### 3.ZooKeeper的分布式锁优化
+
+Zookeeper的基础学习
+
+Zookeeper的分布式锁介绍
+
+**引入依赖**
+
+```xml
+<dependency>
+	<groupId>org.apache.zookeeper</groupId>
+	<artifactId>zookeeper</artifactId>
+	<version>${zookeeper.version}</version>
+	<exclusions>
+		<exclusion>
+			<groupId>org.slf4j</groupId>
+			<artifactId>slf4j-log4j12</artifactId>
+		</exclusion>
+		<exclusion>
+			<groupId>log4j</groupId>
+			<artifactId>log4j</artifactId>
+		</exclusion>
+	</exclusions>
+</dependency>
+<dependency>
+	<groupId>org.apache.curator</groupId>
+	<artifactId>curator-framework</artifactId>
+	<version>${curator.version}</version>
+</dependency>
+<dependency>
+	<groupId>org.apache.curator</groupId>
+	<artifactId>curator-recipes</artifactId>
+	<version>${curator.version}</version>
+</dependency>
+```
+
+**配置文件**
+
+```properties
+#zookeeper
+zk.host=127.0.0.1:2181
+zk.namespace=kill
+```
+
+**核心代码实现**
+
+```java
+// 使用Zookeeper开源客户端Curator实现分布式锁
+
+// 1.创建CuratorFramework
+public CuratorFramework curatorFramework(){
+	CuratorFramework curatorFramework=CuratorFrameworkFactory.builder()
+			.connectString(env.getProperty("zk.host"))
+			.namespace(env.getProperty("zk.namespace"))
+			//重试策略
+			.retryPolicy(new RetryNTimes(5,1000))
+			.build();
+	curatorFramework.start();
+	return curatorFramework;
+}
+
+// 2.使用分布式锁
+InterProcessMutex mutex = new InterProcessMutex(curatorFramework, pathPrefix + killId + userId + "-lock");
+
+// 3.然后使用InterProcessMutex分布式锁的acquire、release方法实现加锁、释放锁
+mutex.acquire(10L, TimeUnit.SECONDS);
+mutex.release();
+```
+
+
+
+## 五、总结
+
+ 要点1：
+
+雪花算法：不采用数据库主键自增的方式，减轻DB压力；避免同一时刻生成相同的订单号。
+
+要点2：
+
+使用RabbitMQ解耦、异步通信提高接口的整体相应时间
+
+要点3：
+
+使用分布式锁，控制共享资源的竞争。
