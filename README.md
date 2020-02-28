@@ -14,11 +14,11 @@ Java秒杀项目seckill
 
 ### 2.项目业务功能介绍
 
-![](docs\img\1系统整体介绍.png)
+![](docs/img/1系统整体介绍.png)
 
 ### 3.项目学习收益
 
-![](docs\img\3项目学习收益.png)
+![](docs/img/3项目学习收益.png)
 
 ## 二、项目搭建
 
@@ -32,7 +32,7 @@ Java秒杀项目seckill
 
 下面写出详细流程，也可以在文末下载资源，直接执行sql文件
 
-![](docs\img\4数据库表结构.png)
+![](docs/img/4数据库表结构.png)
 
 **①item-商品表**
 
@@ -103,11 +103,11 @@ CREATE TABLE if not exists item_kill_success (
 
 **整体结构**
 
-![](docs\img\5多模块项目整体结构.png)
+![](docs/img/5多模块项目整体结构.png)
 
 **①项目初始目录结构**
 
-![](docs\img\6项目初始目录结构.png)
+![](docs/img/6项目初始目录结构.png)
 
 **②pom.xml文件**
 
@@ -807,7 +807,7 @@ jsp页面及js文件，直接拷贝到webapp目录
 
 **整体业务流程介绍**
 
-![](docs\img\8整体业务流程.png)
+![](docs/img/8整体业务流程.png)
 
 ### 1.基础工作
 
@@ -912,7 +912,7 @@ public class BaseController {
 
 **页面显示截图**：
 
-![](docs\img\7基础测试.png)
+![](docs/img/7基础测试.png)
 
 #### 3）Mybatis逆向工程
 
@@ -1329,7 +1329,7 @@ mail.kill.item.success.content=您好，您已成功抢购到商品: <strong sty
 
 **②配置邮件客户端-开启邮件服务**
 
-![](docs\img\9开启邮件服务.png)
+![](docs/img/9开启邮件服务.png)
 
 **③发送邮件方法内容**
 
@@ -1393,13 +1393,13 @@ public class MailService {
 
 **④测试**
 
-![](docs\img\10测试发送邮件.png)
+![](docs/img/10测试发送邮件.png)
 
 #### 6）死信队列失效超时未支付的订单
 
 **死信队列消息模型**
 
-![](docs\img\11死信队列消息模型.png)
+![](docs/img/11死信队列消息模型.png)
 
 **①配置信息**
 
