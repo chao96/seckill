@@ -46,6 +46,7 @@ Java秒杀项目seckill
 ### 1.核心技术列表
 
 ![](docs/img/2核心技术列表.png)
+**shiro部分暂时未学习，后面补上**
 
 ### 2.项目业务功能介绍
 
@@ -962,9 +963,9 @@ public class BaseController {
 
 > 利用mybatis逆向工程生成model实体、mapper接口、mapper映射文件
 
-可以自己手敲相关代码。
+可以自己手敲相关代码。这里写了一份mybatis逆向工程操作文档，很简单。
 
-这里写了一份mybatis逆向工程操作文档，很简单。
+[mybatis逆向工程项目mybatis_generator](https://github.com/chao96/mybatis_generator)
 
 ### 2.业务代码编写
 
@@ -1849,9 +1850,9 @@ public Boolean killItemV4(Integer killId, Integer userId) throws Exception {
 
 ### 3.ZooKeeper的分布式锁优化
 
-Zookeeper的基础学习
+[Zookeeper的基础概念](https://github.com/chao96/JavaPioneer/blob/master/docs/Zookeeper/zookeeper%E5%85%A5%E9%97%A8/zookeeper%E5%9F%BA%E7%A1%80%E6%A6%82%E5%BF%B5.md)
 
-Zookeeper的分布式锁介绍
+[Zookeeper的分布式锁介绍](https://github.com/chao96/JavaPioneer/blob/master/docs/Zookeeper/zookeeper分布式锁.md)
 
 **引入依赖**
 
